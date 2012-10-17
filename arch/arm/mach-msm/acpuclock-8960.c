@@ -126,7 +126,7 @@ static void set_acpuclk_cpu_freq_foot_print(unsigned cpu, unsigned khz)
 static void set_acpuclk_L2_freq_foot_print(unsigned khz)
 {
 #ifdef CONFIG_MSM_CPU_MAX_CLK_1DOT89GHZ
-	unsigned *status = (unsigned *)(CPU_FOOT_PRINT_BASE_CPU0_VIRT + 0x32);
+	unsigned *status = (unsigned *)(CPU_FOOT_PRINT_BASE_CPU0_VIRT + 0x36);
 #endif
 #ifdef CONFIG_MSM_CPU_MAX_CLK_1DOT7GHZ
 	unsigned *status = (unsigned *)(CPU_FOOT_PRINT_BASE_CPU0_VIRT + 0x3c);
@@ -575,6 +575,8 @@ static struct l2_level l2_freq_tbl_8960_kraitv2[] = {
 	[17] = { { 1242000, HFPLL, 1, 0, 0x2E }, 1150000, 1150000, 7 },
 	[18] = { { 1350000, HFPLL, 1, 0, 0x30 }, 1150000, 1150000, 7 },
 	[19] = { { 1458000, HFPLL, 1, 0, 0x32 }, 1150000, 1150000, 7 },
+	[20] = { { 1512000, HFPLL, 1, 0, 0x34 }, 1150000, 1150000, 7 },
+	[21] = { { 1674000, HFPLL, 1, 0, 0x36 }, 1150000, 1150000, 7 },
 };
 
 static struct acpu_level acpu_freq_tbl_8960_kraitv2_slow[] = {
