@@ -3367,8 +3367,8 @@ err_request_gpio_failed:
 #endif
 static char disable_dim_cmd[2] = {0x53, 0x24};/* DTYPE_DCS_WRITE1 */
 static struct dsi_cmd_desc disable_dim[] = {{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(disable_dim_cmd), disable_dim_cmd},};
-static struct dsi_cmd_desc *dim_cmds = disable_dim; /* default disable dim */
 #ifdef CONFIG_FB_MSM_CABC
+static struct dsi_cmd_desc *dim_cmds = disable_dim; /* default disable dim */
 /* for cabc enable and disable seletion */
 static char cabc_off_cmd[2] = {0x55, 0x80};/* DTYPE_DCS_WRITE1 */
 static struct dsi_cmd_desc cabc_off[] = {{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(cabc_off_cmd), cabc_off_cmd},};
