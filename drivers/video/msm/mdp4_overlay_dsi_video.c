@@ -24,10 +24,12 @@
 #include <linux/spinlock.h>
 #include <linux/fb.h>
 #include <linux/msm_mdp.h>
+#include <linux/ktime.h>
+#include <linux/wakelock.h>
+#include <linux/time.h>
 #include <asm/system.h>
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
-#include <mach/debug_display.h>
 #include "mdp.h"
 #include "msm_fb.h"
 #include "mdp4.h"
@@ -37,6 +39,7 @@
 
 static int first_pixel_start_x;
 static int first_pixel_start_y;
+static int dsi_video_enabled;
 
 static struct mdp4_overlay_pipe *dsi_pipe;
 static struct completion dsi_video_comp;
@@ -63,6 +66,9 @@ void mdp4_dsi_video_fxn_register(cmd_fxn_t fxn)
 {
 	display_on = fxn;
 }
+
+static void mdp4_overlay_dsi_video_wait4event(struct msm_fb_data_type *mfd,
+						int intr_done);
 
 int mdp4_dsi_video_on(struct platform_device *pdev)
 {
@@ -113,13 +119,14 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
+	mdp4_overlay_ctrl_db_reset();
+
 	fbi = mfd->fbi;
 	var = &fbi->var;
 
 	bpp = fbi->var.bits_per_pixel / 8;
 	buf = (uint8 *) fbi->fix.smem_start;
-	buf_offset = fbi->var.xoffset * bpp +
-		fbi->var.yoffset * fbi->fix.line_length;
+	buf_offset = calc_fb_offset(mfd, fbi, bpp);
 
 	if (dsi_pipe == NULL) {
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
@@ -151,6 +158,17 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+
+	if (!(mfd->cont_splash_done)) {
+		mfd->cont_splash_done = 1;
+		mdp_pipe_ctrl(MDP_CMD_BLOCK,
+			      MDP_BLOCK_POWER_OFF, FALSE);
+		mdp4_overlay_dsi_video_wait4event(mfd, INTR_DMA_P_DONE);
+		/* disable timing generator */
+		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+		mipi_dsi_controller_cfg(0);
+	}
+
 	if (is_mdp4_hw_reset()) {
 		mdp4_hw_init();
 		outpdw(MDP_BASE + 0x0038, mdp4_display_intf);
@@ -182,8 +200,6 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 
 	mdp4_overlay_rgb_setup(pipe);
 
-	mdp4_mixer_stage_up(pipe);
-
 	mdp4_overlayproc_cfg(pipe);
 
 	/*
@@ -199,9 +215,9 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	dsi_underflow_clr = mfd->panel_info.lcdc.underflow_clr;
 	dsi_hsync_skew = mfd->panel_info.lcdc.hsync_skew;
 	dsi_width = mfd->panel_info.xres +
-		mfd->panel_info.mipi.xres_pad;
+		mfd->panel_info.lcdc.xres_pad;
 	dsi_height = mfd->panel_info.yres +
-		mfd->panel_info.mipi.yres_pad;
+		mfd->panel_info.lcdc.yres_pad;
 	dsi_bpp = mfd->panel_info.bpp;
 
 	hsync_period = hsync_pulse_width + h_back_porch + dsi_width
@@ -260,14 +276,12 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE + 0x30, dsi_hsync_skew);
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE + 0x38, ctrl_polarity);
 	mdp4_overlay_reg_flush(pipe, 1);
-	mdp_histogram_ctrl(TRUE);
+	mdp4_mixer_stage_up(pipe);
+
+	mdp_histogram_ctrl_all(TRUE);
 
 	ret = panel_next_on(pdev);
 	if (ret == 0) {
-		/* enable DSI block */
-		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);
-		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-
 		if (display_on != NULL) {
 			msleep(50);
 			display_on(pdev);
@@ -287,13 +301,13 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	mdp4_mixer_pipe_cleanup(dsi_pipe->mixer_num);
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+	dsi_video_enabled = 0;
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
-	mdp_histogram_ctrl(FALSE);
+	mdp_histogram_ctrl_all(FALSE);
 	ret = panel_next_off(pdev);
 
-#ifdef MIPI_DSI_RGB_UNSTAGE
 	/* delay to make sure the last frame finishes */
 	msleep(20);
 
@@ -302,8 +316,8 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 		mdp4_mixer_stage_down(dsi_pipe);
 		mdp4_iommu_unmap(dsi_pipe);
 	}
-#endif
 
+	mdp4_iommu_detach();
 	return ret;
 }
 
@@ -335,8 +349,7 @@ void mdp4_dsi_video_3d_sbys(struct msm_fb_data_type *mfd,
 
 	bpp = fbi->var.bits_per_pixel / 8;
 	buf = (uint8 *) fbi->fix.smem_start;
-	buf_offset = fbi->var.xoffset * bpp +
-		fbi->var.yoffset * fbi->fix.line_length;
+	buf_offset = calc_fb_offset(mfd, fbi, bpp);
 
 	if (pipe->is_3d) {
 		pipe->src_height = pipe->src_height_3d;
@@ -379,6 +392,8 @@ void mdp4_dsi_video_3d_sbys(struct msm_fb_data_type *mfd,
 	mdp4_overlay_dmap_xy(pipe);
 
 	mdp4_overlay_dmap_cfg(mfd, 1);
+
+	mdp4_overlay_reg_flush(pipe, 1);
 
 	mdp4_mixer_stage_up(pipe);
 
@@ -439,6 +454,94 @@ static void mdp4_dsi_video_blt_dmap_update(struct mdp4_overlay_pipe *pipe)
 }
 
 /*
+ * MDP Timer/Functions
+ * Set up an HR timer to wake up the CPU's just before the return of a VSync
+ * This reduces any latencies that may arise if the CPU's were power collapsed
+ * in between.
+ */
+#define VSYNC_INTERVAL	16
+#define WAKE_DELAY	3 /* 3 ioctls * 600 us = 2ms + 1ms buffer */
+#define MAX_VSYNC_GAP   4 /* Marker to detect whether to skip timer */
+
+/* Move the globals into context data structure for 3.4 upgrade */
+static int first_time = 1;
+static ktime_t last_vsync_time_ns;
+struct hrtimer hr_mdp_timer_pc;
+
+static unsigned long compute_vsync_interval(void)
+{
+	ktime_t currtime_us;
+	unsigned long diff_from_vsync, vsync_interval;
+	/*
+	 * Get interval beween last vsync and current time
+	 * Current time = CPU programming MDP for next Vsync
+	 */
+	currtime_us = ktime_get();
+	diff_from_vsync =
+		(ktime_to_us(ktime_sub(currtime_us, last_vsync_time_ns)));
+	diff_from_vsync /= USEC_PER_MSEC;
+	/*
+	 * If the last Vsync occurred more than 64 ms ago, skip programming
+	 * the timer
+	 */
+	if (diff_from_vsync < (VSYNC_INTERVAL*MAX_VSYNC_GAP)) {
+		vsync_interval =
+			(VSYNC_INTERVAL-diff_from_vsync)%VSYNC_INTERVAL;
+	} else
+		vsync_interval = VSYNC_INTERVAL+1;
+
+	return vsync_interval;
+}
+
+enum hrtimer_restart mdp_pc_hrtimer_callback(struct hrtimer *timer)
+{
+	if (!wake_lock_active(&mdp_idle_wakelock)) {
+		/* Hold Wakelock if no locks held */
+		wake_lock(&mdp_idle_wakelock);
+	}
+	return HRTIMER_NORESTART;
+}
+
+void init_pc_timer(void)
+{
+	/*
+	 * Initialize hr timer which fires a few ms before Vsync - this
+	 * gets rid of any latencies that may arise due to
+	 * wake up from PC
+	 */
+	hrtimer_init(&hr_mdp_timer_pc, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	hr_mdp_timer_pc.function = &mdp_pc_hrtimer_callback;
+}
+
+void program_pc_timer(unsigned long diff_interval)
+{
+	ktime_t ktime_pc;
+	unsigned long delay_in_ns = 0;
+
+	/* Skip programming timer due to invalid delay */
+	if (diff_interval > VSYNC_INTERVAL)
+		return;
+
+	if (diff_interval < WAKE_DELAY) {
+		/*
+		 * Difference from last vsync was a multiple of refresh rate
+		 * (16*x)%16). Reset it to actual time to next vsync
+		 */
+		if (diff_interval == 0)
+			delay_in_ns = VSYNC_INTERVAL-WAKE_DELAY;
+		else
+			return;	/* too close to vsync to fire timer - skip */
+	} else if (diff_interval == WAKE_DELAY) {
+		delay_in_ns = 1;  /* diff_interval/WAKE_DELAY */
+	} else {
+		delay_in_ns = diff_interval-WAKE_DELAY;
+	}
+	delay_in_ns *= NSEC_PER_MSEC;
+	ktime_pc = ktime_set(0, delay_in_ns);
+	hrtimer_start(&hr_mdp_timer_pc, ktime_pc, HRTIMER_MODE_REL);
+}
+
+/*
  * mdp4_overlay_dsi_video_wait4event:
  * INTR_DMA_P_DONE and INTR_PRIMARY_VSYNC event only
  * no INTR_OVERLAY0_DONE event allowed.
@@ -448,53 +551,30 @@ static void mdp4_overlay_dsi_video_wait4event(struct msm_fb_data_type *mfd,
 {
 	unsigned long flag;
 	unsigned int data;
-	long timeout;
-	int retry_count = 0;
+	unsigned long vsync_interval;
 
 	data = inpdw(MDP_BASE + DSI_VIDEO_BASE);
 	data &= 0x01;
 	if (data == 0)	/* timing generator disabled */
 		return;
-
+	if ((intr_done == INTR_PRIMARY_VSYNC) ||
+			(intr_done == INTR_DMA_P_DONE)) {
+		if (first_time) {
+			init_pc_timer();
+			first_time = 0;
+		}
+		vsync_interval = compute_vsync_interval();
+		program_pc_timer(vsync_interval);
+	}
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	INIT_COMPLETION(dsi_video_comp);
 	mfd->dma->waiting = TRUE;
-	wmb();
 	outp32(MDP_INTR_CLEAR, intr_done);
 	mdp_intr_mask |= intr_done;
-	wmb();
 	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
 	mdp_enable_irq(MDP_DMA2_TERM);  /* enable intr */
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
-	wmb();
-#if 1 /* HTC_CSP_START */
-	timeout = wait_for_completion_timeout(&dsi_video_comp, HZ/5);
-
-	while (!timeout && retry_count++ < 15) {
-		rmb();
-		if (mfd->dma->waiting == FALSE) {
-			pr_info("###%s(%d)timeout but dma not busy now\n", __func__, __LINE__);
-			break;
-		} else {
-			PR_DISP_INFO("%s(%d)timeout but dma still busy\n", __func__, __LINE__);
-			PR_DISP_INFO("MDP_DISPLAY_STATUS:%x\n", inpdw(msm_mdp_base + 0x18));
-			PR_DISP_INFO("MDP_INTR_STATUS:%x\n", inpdw(MDP_INTR_STATUS));
-			PR_DISP_INFO("MDP_INTR_ENABLE:%x\n", inpdw(MDP_INTR_ENABLE));
-			PR_DISP_INFO("MDP_OVERLAY_STATUS:%x\n", inpdw(msm_mdp_base + 0x10000));
-
-			timeout = wait_for_completion_timeout(&dsi_video_comp, HZ/5);
-		}
-	}
-
-	if (retry_count >= 15) {
-		PR_DISP_INFO("###mdp busy wait retry timed out, mfd->dma->waiting:%d\n", mfd->dma->waiting);
-		spin_lock_irqsave(&mdp_spin_lock, flag);
-		mfd->dma->waiting = FALSE;
-		spin_unlock_irqrestore(&mdp_spin_lock, flag);
-	}
-#else /* HTC_CSP_END */
-	wait_for_completion(&dsi_video_comp);
-#endif
+	wait_for_completion_timeout(&dsi_video_comp, HZ/10);
 	mdp_disable_irq(MDP_DMA2_TERM);
 }
 
@@ -520,12 +600,25 @@ static void mdp4_overlay_dsi_video_dma_busy_wait(struct msm_fb_data_type *mfd)
 	pr_debug("%s: done pid=%d\n", __func__, current->pid);
 }
 
+void mdp4_overlay_dsi_video_start(void)
+{
+	if (!dsi_video_enabled) {
+		/* enable DSI block */
+		mdp4_iommu_attach();
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);
+		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+		dsi_video_enabled = 1;
+	}
+}
+
 void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe)
 {
 	unsigned long flag;
 
-	if (pipe && (pipe->flags & MDP_OV_PLAY_NOWAIT))
+	if (pipe->flags & MDP_OV_PLAY_NOWAIT)
 		return;
 
 	if (dsi_pipe->blt_addr) {
@@ -559,6 +652,10 @@ void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 void mdp4_primary_vsync_dsi_video(void)
 {
 	complete_all(&dsi_video_comp);
+	last_vsync_time_ns = ktime_get();
+	/* Release Wakelock */
+	if (wake_lock_active(&mdp_idle_wakelock))
+		wake_unlock(&mdp_idle_wakelock);
 }
 
  /*
@@ -585,6 +682,10 @@ void mdp4_dma_p_done_dsi_video(struct mdp_dma_data *dma)
 		blt_cfg_changed = 0;
 	}
 	complete_all(&dsi_video_comp);
+	last_vsync_time_ns = ktime_get();
+	/*  Release Wakelock */
+	if (wake_lock_active(&mdp_idle_wakelock))
+		wake_unlock(&mdp_idle_wakelock);
 }
 
 /*
@@ -702,8 +803,7 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 	/* no need to power on cmd block since it's dsi video mode */
 	bpp = fbi->var.bits_per_pixel / 8;
 	buf = (uint8 *) fbi->fix.smem_start;
-	buf_offset = fbi->var.xoffset * bpp +
-		fbi->var.yoffset * fbi->fix.line_length;
+	buf_offset = calc_fb_offset(mfd, fbi, bpp);
 
 	mutex_lock(&mfd->dma->ov_mutex);
 
@@ -719,8 +819,9 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 	}
 
 	mdp4_overlay_rgb_setup(pipe);
-	mdp4_overlay_reg_flush(pipe, 1);
-	mdp4_overlay_update_layers(mfd, pipe->mixer_num);
+	mdp4_overlay_reg_flush(pipe, 0);
+	mdp4_mixer_stage_up(pipe);
+	mdp4_overlay_dsi_video_start();
 	mdp4_overlay_dsi_video_vsync_push(mfd, pipe);
 	mdp4_iommu_unmap(pipe);
 	mutex_unlock(&mfd->dma->ov_mutex);

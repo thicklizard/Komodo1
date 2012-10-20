@@ -382,6 +382,7 @@ struct msm_panel_common_pdata {
 	int gpio;
 	int (*backlight_level)(int level, int max, int min);
 	int (*pmic_backlight)(int level);
+	int (*rotate_panel)(void);
 	int (*panel_num)(void);
 	void (*panel_config_gpio)(int);
 	int (*vga_switch)(int select_vga);
