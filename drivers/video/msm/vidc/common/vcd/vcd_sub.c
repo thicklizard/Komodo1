@@ -745,8 +745,7 @@ u32 vcd_free_one_buffer_internal(
 		return VCD_ERR_ILLEGAL_PARM;
 	}
 	if (buf_entry->in_use) {
-		VCD_MSG_ERROR("Buffer is in use and is not flushed: %p, %d\n",
-			buf_entry, buf_entry->in_use);
+		VCD_MSG_ERROR("\n Buffer is in use and is not flushed");
 		return VCD_ERR_ILLEGAL_OP;
 	}
 
@@ -1044,7 +1043,6 @@ u32 vcd_flush_buffers(struct vcd_clnt_ctxt *cctxt, u32 mode)
 {
 	u32 rc = VCD_S_SUCCESS;
 	struct vcd_buffer_entry *buf_entry;
-	struct vcd_buffer_entry *orig_frame = NULL;
 
 	VCD_MSG_LOW("vcd_flush_buffers:");
 
@@ -1068,19 +1066,9 @@ u32 vcd_flush_buffers(struct vcd_clnt_ctxt *cctxt, u32 mode)
 							 vcd_frame_data),
 						cctxt,
 						cctxt->client_data);
-				orig_frame = vcd_find_buffer_pool_entry(
-						&cctxt->in_buf_pool,
-						buf_entry->virtual);
 				}
 
-			if (orig_frame) {
-				orig_frame->in_use--;
-				if (orig_frame != buf_entry)
-					kfree(buf_entry);
-			} else {
-				buf_entry->in_use = false;
-				VCD_MSG_ERROR("Original frame not found in buffer pool\n");
-			}
+			buf_entry->in_use = false;
 			VCD_BUFFERPOOL_INUSE_DECREMENT(
 				cctxt->in_buf_pool.in_use);
 			buf_entry = NULL;
@@ -1955,12 +1943,6 @@ u32 vcd_handle_input_done(
 	orig_frame = vcd_find_buffer_pool_entry(&cctxt->in_buf_pool,
 					 transc->ip_buf_entry->virtual);
 
-	/* HTC_START (klockwork issue)*/
-	if (!orig_frame) {
-		VCD_MSG_ERROR("Bad buffer addr: %p", transc->ip_buf_entry->virtual);
-		return VCD_ERR_FAIL;
-	}
-	/* HTC_END */
 	if ((transc->ip_buf_entry->frame.virtual !=
 		 frame->vcd_frm.virtual)
 		|| !transc->ip_buf_entry->in_use) {
@@ -1977,11 +1959,8 @@ u32 vcd_handle_input_done(
 			&frame->vcd_frm,
 			sizeof(struct vcd_frame_data),
 			cctxt, cctxt->client_data);
-	/* HTC_START (klockwork issue)*/
-	if (orig_frame->in_use) {
-		orig_frame->in_use--;
-	}
-	/* HTC_END */
+
+	orig_frame->in_use--;
 	VCD_BUFFERPOOL_INUSE_DECREMENT(cctxt->in_buf_pool.in_use);
 
 	if (cctxt->decoding && orig_frame->in_use) {
@@ -2002,14 +1981,7 @@ u32 vcd_handle_input_done(
 	}
 
 	if (VCD_FAILED(status)) {
-		/* HTC_START */
-		/* Don't treat VCD_ERR_BITSTREAM_ERR as error, since it is recoverable */
-		if (status == VCD_ERR_BITSTREAM_ERR) {
-			VCD_MSG_HIGH("INPUT_DONE returned err = 0x%x", status);
-		}
-		else
-			VCD_MSG_ERROR("INPUT_DONE returned err = 0x%x", status);
-		/* HTC_END */
+		VCD_MSG_ERROR("INPUT_DONE returned err = 0x%x", status);
 		vcd_handle_input_done_failed(cctxt, transc);
 	} else
 		cctxt->status.mask |= VCD_FIRST_IP_DONE;
@@ -2095,8 +2067,8 @@ u32 vcd_validate_io_done_pyld(
 		rc = VCD_ERR_CLIENT_FATAL;
 
 	if (VCD_FAILED(rc)) {
-		VCD_MSG_FATAL("vcd_validate_io_done_pyld: "\
-			"invalid transaction 0x%x", (u32)transc);
+		VCD_MSG_FATAL(
+			"vcd_validate_io_done_pyld: invalid transaction");
 	} else if (!frame->vcd_frm.virtual &&
 		status != VCD_ERR_INTRLCD_FIELD_DROP)
 		rc = VCD_ERR_BAD_POINTER;

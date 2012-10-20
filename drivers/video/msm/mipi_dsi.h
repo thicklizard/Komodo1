@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -50,7 +50,9 @@
 #define MIPI_DSI_PANEL_WSVGA_PT	4
 #define MIPI_DSI_PANEL_QHD_PT 5
 #define MIPI_DSI_PANEL_WXGA	6
-#define DSI_PANEL_MAX	6
+#define MIPI_DSI_PANEL_WUXGA	7
+#define MIPI_DSI_PANEL_720P_PT	8
+#define DSI_PANEL_MAX	8
 
 enum {		/* mipi dsi panel */
 	DSI_VIDEO_MODE,
@@ -198,10 +200,8 @@ struct dsi_buf {
 };
 
 /* dcs read/write */
-#define DTYPE_VSYNC_START	0x01	/* short write, 0 parameter */
 #define DTYPE_DCS_WRITE		0x05	/* short write, 0 parameter */
 #define DTYPE_DCS_WRITE1	0x15	/* short write, 1 parameter */
-#define DTYPE_HSYNC_START	0x21	/* short write, 0 parameter */
 #define DTYPE_DCS_READ		0x06	/* read */
 #define DTYPE_DCS_LWRITE	0x39	/* long write */
 
@@ -306,6 +306,7 @@ void mipi_dsi_clk_deinit(struct device *dev);
 void mipi_dsi_prepare_clocks(void);
 void mipi_dsi_unprepare_clocks(void);
 void mipi_dsi_ahb_ctrl(u32 enable);
+void cont_splash_clk_ctrl(int enable);
 void mipi_dsi_turn_on_clks(void);
 void mipi_dsi_turn_off_clks(void);
 
