@@ -1010,8 +1010,6 @@ static u32 ddl_set_enc_property(struct ddl_client_context *ddl,
 				ddl_get_metadata_params(ddl,
 						&slice_property_hdr,
 						&slice_meta_data);
-				slice_meta_data.meta_data_enable_flag
-					&= ~VCD_METADATA_ENC_SLICE;
 				ddl_set_metadata_params(ddl,
 						&slice_property_hdr,
 						&slice_meta_data);

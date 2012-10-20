@@ -121,8 +121,9 @@ static int is_session_invalid(u32 decoding, u32 flags)
 	secure_session_running = (sec_info.secure_enc > 0) ||
 			(sec_info.secure_dec > 0);
 	if (!decoding && is_secure) {
-		if ((sec_info.secure_dec == 1))
+		if ((sec_info.secure_dec == 1))	{
 			VCD_MSG_LOW("SE-SD: SUCCESS\n");
+		}
 		else {
 			VCD_MSG_LOW("SE is permitted only with SD: FAILURE\n");
 			return -EACCES;
