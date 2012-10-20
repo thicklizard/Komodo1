@@ -98,3 +98,4 @@ extern int vsg_init(struct v4l2_subdev *sd, u32 val);
 extern long vsg_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg);
 
 #endif /* _WFD_VSG_SUBDEV_ */
+

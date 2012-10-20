@@ -215,3 +215,4 @@ int wfd_stats_deinit(struct wfd_stats *stats)
 
 	return 0;
 }
+
