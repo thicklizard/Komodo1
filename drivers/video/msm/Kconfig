@@ -1,3 +1,4 @@
+source "drivers/video/msm/sii9234/Kconfig"
 source "drivers/video/msm/vidc/Kconfig"
 
 config FB_MSM
@@ -34,16 +35,11 @@ config FB_MSM_TRIPLE_BUFFER
 	bool "Support for triple frame buffer"
 	default n
 
-config FB_MSM_MDP_HW
-	bool
-	default n
-
 choice
 	prompt "MDP HW version"
 	default FB_MSM_MDP22
 
 config FB_MSM_MDP22
-	select FB_MSM_MDP_HW
 	bool "MDP HW ver2.2"
 	---help---
 	  Support for MSM MDP HW revision 2.2
@@ -58,7 +54,6 @@ config FB_MSM_MDP30
 
 config FB_MSM_MDP303
 	depends on FB_MSM_MDP30
-	select FB_MSM_MDP_HW
 	bool "MDP HW ver3.03"
 	default n
 	---help---
@@ -69,7 +64,6 @@ config FB_MSM_MDP303
 
 config FB_MSM_MDP31
 	select FB_MSM_LCDC_HW
-	select FB_MSM_MDP_HW
 	bool "MDP HW ver3.1"
 	---help---
 	  Support for MSM MDP HW revision 3.1
@@ -77,17 +71,10 @@ config FB_MSM_MDP31
 
 config FB_MSM_MDP40
 	select FB_MSM_LCDC_HW
-	select FB_MSM_MDP_HW
 	bool "MDP HW ver4.0"
 	---help---
 	  Support for MSM MDP HW revision 4.0
 	  Say Y here if this is msm7x30 variant platform.
-
-config FB_MSM_MDP_NONE
-	bool "MDP HW None"
-	---help---
-	  Say Y here if this is mdm platform.
-
 endchoice
 
 config FB_MSM_EBI2
@@ -315,12 +302,6 @@ config FB_MSM_OVERLAY0_WRITEBACK
         bool "MDP overlay0 write back mode enable"
 	---help---
 	  Support for MDP4 OVERLAY0 write back mode
-
-config FB_MSM_OVERLAY1_WRITEBACK
-        depends on FB_MSM_OVERLAY
-        bool "MDP overlay1 write back mode enable"
-        ---help---
-          Support for MDP4 OVERLAY1 write back mode
 
 config FB_MSM_WRITEBACK_MSM_PANEL
 	depends on FB_MSM_OVERLAY
@@ -718,7 +699,7 @@ endchoice
 
 choice
 	prompt "Default framebuffer color depth"
-	depends on FB_MSM_MDP40 || FB_MSM_MDP31 || FB_MSM_MDP303
+	depends on FB_MSM_MDP40 || FB_MSM_MDP31
 	default FB_MSM_DEFAULT_DEPTH_RGBA8888
 
 config FB_MSM_DEFAULT_DEPTH_RGB565
@@ -742,17 +723,4 @@ config FB_MSM_CABC
 	depends on FB_MSM
 	default n
 
-config FB_MSM_EBI2_EPSON_S1D_QVGA_PANEL
-	bool "EBI2 Epson QVGA Panel"
-	select FB_MSM_EBI2
-	default n
-	---help---
-	  Support for EBI2 Epson QVGA (240x320) panel
-
-config FB_MSM_EBI2_PANEL_DETECT
-	bool "EBI2 Panel Detect"
-	select FB_MSM_EBI2_EPSON_S1D_QVGA_PANEL
-	default n
-	---help---
-	  Support for EBI2 panel auto detect
 endif

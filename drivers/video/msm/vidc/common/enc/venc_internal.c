@@ -34,11 +34,13 @@
 #include "vcd_res_tracker_api.h"
 #include "venc_internal.h"
 
-#if DEBUG
-#define DBG(x...) printk(KERN_DEBUG x)
-#else
-#define DBG(x...)
-#endif
+/*HTC_START*/
+extern u32 vidc_msg_debug;
+#define DBG(x...)				\
+	if (vidc_msg_debug) {			\
+		printk(KERN_DEBUG "[VID] " x);	\
+	}
+/*HTC_END*/
 
 #define ERR(x...) printk(KERN_ERR x)
 static unsigned int vidc_mmu_subsystem[] = {
@@ -1723,6 +1725,7 @@ u32 vid_enc_fill_output_buffer(struct video_client_ctx *client_ctx,
 	struct file *file;
 	s32 buffer_index = -1;
 	u32 vcd_status = VCD_ERR_FAIL;
+	struct ion_handle *buff_handle = NULL;
 
 	struct vcd_frame_data vcd_frame;
 
@@ -1738,9 +1741,13 @@ u32 vid_enc_fill_output_buffer(struct video_client_ctx *client_ctx,
 
 		memset((void *)&vcd_frame, 0,
 					 sizeof(struct vcd_frame_data));
+		vidc_get_fd_info(client_ctx, BUFFER_TYPE_OUTPUT,
+				pmem_fd, kernel_vaddr, buffer_index,
+				&buff_handle);
 		vcd_frame.virtual = (u8 *) kernel_vaddr;
 		vcd_frame.frm_clnt_data = (u32) output_frame_info->clientdata;
 		vcd_frame.alloc_len = output_frame_info->sz;
+		vcd_frame.buff_ion_handle = buff_handle;
 
 		vcd_status = vcd_fill_output_buffer(client_ctx->vcd_handle,
 								&vcd_frame);
@@ -1914,7 +1921,7 @@ u32 vid_enc_free_recon_buffers(struct video_client_ctx *client_ctx,
 	}
 	len = sizeof(client_ctx->recon_buffer)/
 		sizeof(struct vcd_property_enc_recon_buffer);
-	pr_err(" %s() address  %p", __func__,
+	DBG(" %s() address  %p", __func__,
 	venc_recon->pbuffer);
 	for (i = 0; i < len; i++) {
 		if (client_ctx->recon_buffer[i].user_virtual_addr
