@@ -1871,6 +1871,12 @@ config MSM_PIL_TZAPPS
 	  used to decrypt data and perform secure operations on the behalf of
 	  the kernel.
 
+config MSM_INSECURE_PIL_RIVA
+	bool "Force Riva PIL to insecure mode"
+	depends on MSM_PIL_RIVA
+	help
+	Force Riva PIL to use non-secure boot.
+
 config MSM_SCM
 	bool "Secure Channel Manager (SCM) support"
 	default n

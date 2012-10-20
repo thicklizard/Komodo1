@@ -34,6 +34,7 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <linux/hrtimer.h>
+#include <linux/wakelock.h>
 
 #include <linux/fb.h>
 #include <linux/list.h>
@@ -43,6 +44,9 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
+
+/*  Idle wakelock to prevent PC between wake up and Vsync */
+extern struct wake_lock mdp_idle_wakelock;
 
 #include "msm_fb_panel.h"
 #include "mdp.h"
@@ -108,7 +112,6 @@ struct msm_fb_data_type {
 	struct hrtimer dma_hrtimer;
 
 	boolean panel_power_on;
-	boolean request_display_on;
 	struct work_struct dma_update_worker;
 	struct semaphore sem;
 
@@ -132,8 +135,9 @@ struct msm_fb_data_type {
 	int (*lut_update) (struct fb_info *info,
 			      struct fb_cmap *cmap);
 	int (*do_histogram) (struct fb_info *info,
-			      struct mdp_histogram *hist);
-	int (*get_gamma_curvy) (struct msm_panel_info pinfo, struct gamma_curvy *gc);
+			      struct mdp_histogram_data *hist);
+	int (*start_histogram) (struct mdp_histogram_start_req *req);
+	int (*stop_histogram) (struct fb_info *info, uint32_t block);
 	void *cursor_buf;
 	void *cursor_buf_phys;
 
@@ -148,10 +152,7 @@ struct msm_fb_data_type {
 	__u32 var_xres;
 	__u32 var_yres;
 	__u32 var_pixclock;
-#if 1 /* HTC_CSP_START */
-	uint32_t width;
-	uint32_t height;
-#endif /* HTC_CSP_END */
+	__u32 var_frame_rate;
 
 #ifdef MSM_FB_ENABLE_DBGFS
 	struct dentry *sub_dir;
@@ -159,9 +160,6 @@ struct msm_fb_data_type {
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend onchg_suspend;
-#endif
 #ifdef CONFIG_FB_MSM_MDDI
 	struct early_suspend mddi_early_suspend;
 	struct early_suspend mddi_ext_early_suspend;
@@ -188,17 +186,10 @@ struct msm_fb_data_type {
 	u32 mem_hid;
 	u32 mdp_rev;
 	u32 use_ov0_blt, ov0_blt_state;
+	u32 use_ov1_blt, ov1_blt_state;
 	u32 writeback_state;
-#if defined CONFIG_FB_MSM_SELF_REFRESH
-	struct workqueue_struct *self_refresh_wq;
-	struct work_struct self_refresh_work;
-	struct timer_list self_refresh_timer;
-#endif
-#ifdef CONFIG_FB_MSM_CABC
-	struct workqueue_struct *cabc_wq;
-	struct work_struct cabc_work;
-	struct timer_list cabc_update_timer;
-#endif
+	bool writeback_active_cnt;
+	int cont_splash_done;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);
@@ -217,27 +208,20 @@ int msm_fb_writeback_dequeue_buffer(struct fb_info *info,
 int msm_fb_writeback_stop(struct fb_info *info);
 int msm_fb_writeback_terminate(struct fb_info *info);
 int msm_fb_detect_client(const char *name);
-void msm_fb_display_on(struct msm_fb_data_type *mfd);
-#define DEFAULT_BRIGHTNESS 83
+int calc_fb_offset(struct msm_fb_data_type *mfd, struct fb_info *fbi, int bpp);
 
 #ifdef CONFIG_FB_BACKLIGHT
 void msm_fb_config_backlight(struct msm_fb_data_type *mfd);
 #endif
 
-#if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
-/* For USB Projector to quick access the frame buffer info */
-struct msm_fb_info {
-    unsigned char *fb_addr;
-    int msmfb_area;
-    int xres;
-    int yres;
-};
-
-extern int msmfb_get_var(struct msm_fb_info *tmp);
-extern int msmfb_get_fb_area(void);
-#endif
-
 void fill_black_screen(void);
 void unfill_black_screen(void);
+int msm_fb_check_frame_rate(struct msm_fb_data_type *mfd,
+				struct fb_info *info);
+
+#ifdef CONFIG_FB_MSM_LOGO
+#define INIT_IMAGE_FILE "/initlogo.rle"
+int load_565rle_image(char *filename, bool bf_supported);
+#endif
 
 #endif /* MSM_FB_H */

@@ -37,9 +37,9 @@
 
 
 
-#define DBG(x...) pr_debug("[VID]" x)
-#define INFO(x...) pr_info("[VID]" x)
-#define ERR(x...) pr_err("[VID]" x)
+#define DBG(x...) pr_debug(x)
+#define INFO(x...) pr_info(x)
+#define ERR(x...) pr_err(x)
 
 #define VID_DEC_NAME "msm_vidc_dec"
 
