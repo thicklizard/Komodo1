@@ -1095,4 +1095,3 @@ EXPORT_SYMBOL(scsi_is_sdev_device);
 /* A blank transport template that is used in drivers that don't
  * yet implement Transport Attributes */
 struct scsi_transport_template blank_transport_template = { { { {NULL, }, }, }, };
-

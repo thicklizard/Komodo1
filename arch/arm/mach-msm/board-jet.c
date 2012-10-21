@@ -824,7 +824,7 @@ int set_two_phase_freq(int cpufreq);
 
 #define MDP_VSYNC_GPIO 0
 
-#define PANEL_NAME_MAX_LEN	30
+/* #define PANEL_NAME_MAX_LEN	30 */
 #define MIPI_CMD_NOVATEK_QHD_PANEL_NAME	"mipi_cmd_novatek_qhd"
 #define MIPI_VIDEO_NOVATEK_QHD_PANEL_NAME	"mipi_video_novatek_qhd"
 #define MIPI_VIDEO_TOSHIBA_WSVGA_PANEL_NAME	"mipi_video_toshiba_wsvga"
@@ -1602,7 +1602,7 @@ static struct camera_flash_info msm_camera_sensor_s5k3h2yx_flash_info = {
 
 static struct camera_flash_cfg msm_camera_sensor_s5k3h2yx_flash_cfg = {
 	.low_temp_limit		= 5,
-	.low_cap_limit		= 5,
+	.low_cap_limit		= 15,
 	.flash_info             = &msm_camera_sensor_s5k3h2yx_flash_info,
 };
 /* Andrew_Cheng linear led 20111205 ME */
@@ -5530,7 +5530,7 @@ static struct pm8xxx_led_configure pm8921_led_info[] = {
 		.duites_size 	= 2,
 		.duty_time_ms 	= 16,
 		.lut_flag 	= PM_PWM_LUT_RAMP_UP | PM_PWM_LUT_PAUSE_HI_EN,
-		.out_current    = 10,
+		.out_current    = 40,
 		.duties		= {0, 50, 100, 100, 50, 0, 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0,

@@ -240,7 +240,7 @@ static ssize_t softsynth_read(struct file *fp, char *buf, size_t count,
 		} else if (synth_buffer_empty()) {
 			break;
 		} else if (init[init_pos]) {
-		ch = init[init_pos++];
+			ch = init[init_pos++];
 		} else {
 			ch = synth_buffer_getc();
 		}

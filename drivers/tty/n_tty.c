@@ -1728,7 +1728,7 @@ static ssize_t n_tty_read(struct tty_struct *tty, struct file *file,
 
 do_it_again:
 
-	 if (WARN_ON(!tty->read_buf))
+	if (WARN_ON(!tty->read_buf))
 		return -EAGAIN;
 
 	c = job_control(tty, file);

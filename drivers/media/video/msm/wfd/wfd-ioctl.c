@@ -43,6 +43,7 @@
 #define VENC_INPUT_BUFFERS 4
 
 struct wfd_device {
+	struct mutex dev_lock;
 	struct platform_device *pdev;
 	struct v4l2_device v4l2_dev;
 	struct video_device *pvdev;
@@ -51,6 +52,7 @@ struct wfd_device {
 	struct v4l2_subdev vsg_sdev;
 	struct ion_client *ion_client;
 	bool secure_device;
+	bool in_use;
 };
 
 struct mem_info {
@@ -496,7 +498,6 @@ void wfd_vidbuf_buf_cleanup(struct vb2_buffer *vb)
 	if (rc)
 		WFD_MSG_ERR("Failed to free output buffer\n");
 	wfd_unregister_out_buf(inst, minfo);
-	wfd_free_input_buffers(wfd_dev, inst);
 }
 
 static int mdp_output_thread(void *data)
@@ -515,8 +516,10 @@ static int mdp_output_thread(void *data)
 			core, ioctl, MDP_DQ_BUFFER, (void *)&obuf_mdp);
 
 		if (rc) {
-			WFD_MSG_ERR("Either streamoff called or"
-						" MDP REPORTED ERROR\n");
+			if (rc != -ENOBUFS)
+				WFD_MSG_ERR("MDP reported err %d\n", rc);
+
+			WFD_MSG_ERR("Streamoff called\n");
 			break;
 		} else {
 			wfd_stats_update(&inst->stats,
@@ -612,6 +615,10 @@ int wfd_vidbuf_stop_streaming(struct vb2_queue *q)
 		WFD_MSG_ERR("Failed to stop VSG\n");
 
 	kthread_stop(inst->mdp_task);
+	rc = v4l2_subdev_call(&wfd_dev->enc_sdev, core, ioctl,
+			ENCODE_FLUSH, (void *)inst->venc_inst);
+	if (rc)
+		WFD_MSG_ERR("Failed to flush encoder\n");
 	WFD_MSG_DBG("enc stop\n");
 	rc = v4l2_subdev_call(&wfd_dev->enc_sdev, core, ioctl,
 			ENCODE_STOP, (void *)inst->venc_inst);
@@ -1243,13 +1250,25 @@ int wfd_initialize_vb2_queue(struct vb2_queue *q, void *priv)
 static int wfd_open(struct file *filp)
 {
 	int rc = 0;
-	struct wfd_inst *inst;
-	struct wfd_device *wfd_dev;
+	struct wfd_inst *inst = NULL;
+	struct wfd_device *wfd_dev = NULL;
 	struct venc_msg_ops enc_mops;
 	struct vsg_msg_ops vsg_mops;
 
 	WFD_MSG_DBG("wfd_open: E\n");
 	wfd_dev = video_drvdata(filp);
+
+	mutex_lock(&wfd_dev->dev_lock);
+	if (wfd_dev->in_use) {
+		WFD_MSG_ERR("Device already in use.\n");
+		rc = -EBUSY;
+		mutex_unlock(&wfd_dev->dev_lock);
+		goto err_dev_busy;
+	}
+
+	wfd_dev->in_use = true;
+	mutex_unlock(&wfd_dev->dev_lock);
+
 	inst = kzalloc(sizeof(struct wfd_inst), GFP_KERNEL);
 	if (!inst || !wfd_dev) {
 		WFD_MSG_ERR("Could not allocate memory for "
@@ -1310,6 +1329,7 @@ err_venc:
 				MDP_CLOSE, (void *)inst->mdp_inst);
 err_mdp_open:
 	kfree(inst);
+err_dev_busy:
 	return rc;
 }
 
@@ -1323,12 +1343,13 @@ static int wfd_close(struct file *filp)
 	inst = filp->private_data;
 	if (inst) {
 		wfdioc_streamoff(filp, NULL, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-		vb2_queue_release(&inst->vid_bufq);
 		rc = v4l2_subdev_call(&wfd_dev->mdp_sdev, core, ioctl,
 				MDP_CLOSE, (void *)inst->mdp_inst);
 		if (rc)
 			WFD_MSG_ERR("Failed to CLOSE mdp subdevice: %d\n", rc);
 
+		vb2_queue_release(&inst->vid_bufq);
+		wfd_free_input_buffers(wfd_dev, inst);
 		rc = v4l2_subdev_call(&wfd_dev->enc_sdev, core, ioctl,
 				CLOSE, (void *)inst->venc_inst);
 
@@ -1341,10 +1362,14 @@ static int wfd_close(struct file *filp)
 		if (rc)
 			WFD_MSG_ERR("Failed to CLOSE vsg subdev: %d\n", rc);
 
+		wfd_stats_deinit(&inst->stats);
 		kfree(inst);
 	}
 
-	wfd_stats_deinit(&inst->stats);
+	mutex_lock(&wfd_dev->dev_lock);
+	wfd_dev->in_use = false;
+	mutex_unlock(&wfd_dev->dev_lock);
+
 	WFD_MSG_DBG("wfd_close: X\n");
 	return 0;
 }
@@ -1487,7 +1512,9 @@ static int __devinit __wfd_probe(struct platform_device *pdev)
 		}
 
 		/* Other device specific stuff */
+		mutex_init(&wfd_dev[c].dev_lock);
 		wfd_dev[c].ion_client = ion_client;
+		wfd_dev[c].in_use = false;
 		switch (WFD_DEVICE_NUMBER_BASE + c) {
 		case WFD_DEVICE_SECURE:
 			wfd_dev[c].secure_device = true;

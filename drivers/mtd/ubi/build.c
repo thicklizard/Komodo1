@@ -818,7 +818,7 @@ static int autoresize(struct ubi_device *ubi, int vol_id)
 
 	if (ubi->ro_mode) {
 		ubi_warn("skip auto-resize because of R/O mode");
-		 return 0;
+		return 0;
 	}
 
 	/*

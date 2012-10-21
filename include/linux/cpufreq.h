@@ -24,11 +24,6 @@
 
 #define CPUFREQ_NAME_LEN 16
 
-#ifdef CONFIG_MSM_MPDEC
-extern uint32_t acpu_check_khz_value(unsigned long khz);
-
-#endif
-
 
 /*********************************************************************
  *                     CPUFREQ NOTIFIER INTERFACE                    *
@@ -60,6 +55,10 @@ static inline int cpufreq_unregister_notifier(struct notifier_block *nb,
 
 #define CPUFREQ_POLICY_POWERSAVE	(1)
 #define CPUFREQ_POLICY_PERFORMANCE	(2)
+
+/* Minimum frequency cutoff to notify the userspace about cpu utilization
+ * changes */
+#define MIN_CPU_UTIL_NOTIFY   40
 
 /* Frequency values here are CPU kHz so that hardware which doesn't run
  * with some frequencies can complain without having to guess what per
@@ -101,6 +100,7 @@ struct cpufreq_policy {
 	unsigned int		max;    /* in kHz */
 	unsigned int		cur;    /* in kHz, only needed if cpufreq
 					 * governors are used */
+	unsigned int            util;  /* CPU utilization at max frequency */
 	unsigned int		policy; /* see above */
 	struct cpufreq_governor	*governor; /* see below */
 
@@ -260,7 +260,8 @@ int cpufreq_unregister_driver(struct cpufreq_driver *driver_data);
 
 
 void cpufreq_notify_transition(struct cpufreq_freqs *freqs, unsigned int state);
-
+void cpufreq_notify_utilization(struct cpufreq_policy *policy,
+		unsigned int load);
 
 static inline void cpufreq_verify_within_limits(struct cpufreq_policy *policy, unsigned int min, unsigned int max)
 {
@@ -368,36 +369,6 @@ extern struct cpufreq_governor cpufreq_gov_conservative;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
 extern struct cpufreq_governor cpufreq_gov_interactive;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
-#elif defined(CONFIG_CPU_FREQ_CPU_FREQ_DEFAULT_GOV_SMARTASS2)
-extern struct cpufreq_governor cpufreq_gov_smartass2;
-#define CPUFREQ_DEFAULT_GOVERNOR (&cpufreq_gov_smartass2)
-#elif defined(CONFIG_CPU_FREQ_CPU_FREQ_DEFAULT_GOV_LIONHEART)
-extern struct cpufreq_governor cpufreq_gov_lionheart;
-#define CPUFREQ_DEFAULT_GOVERNOR (&cpufreq_gov_lionheart)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVEX)
-extern struct cpufreq_governor cpufreq_gov_interactivex;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactivex)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTELIDEMAND)
-extern struct cpufreq_governor cpufreq_gov_intelidemand;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_intelidemand)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_BRAZILIANWAX)
-extern struct cpufreq_governor cpufreq_gov_brazilianwax;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_brazilianwax)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_LAGFREE)
-extern struct cpufreq_governor cpufreq_gov_lagfree;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_lagfree)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_SAVAGEDZEN)
-extern struct cpufreq_governor cpufreq_gov_savagedzen;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_savagedzen)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_PEGASUSQ)
-extern struct cpufreq_governor cpufreq_gov_pegasusq;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_pegasusq)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_BADASS)
-extern struct cpufreq_governor cpufreq_gov_badass;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_badass)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_WHEATLEY)
-extern struct cpufreq_governor cpufreq_gov_wheatley;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_wheatley)
 #endif
 
 
@@ -439,6 +410,8 @@ void cpufreq_frequency_table_get_attr(struct cpufreq_frequency_table *table,
 
 void cpufreq_frequency_table_put_attr(unsigned int cpu);
 
+
+void print_cpu_freq_stats(int type);
 
 #ifdef CONFIG_PERFLOCK
 extern unsigned int get_max_cpu_freq(void);

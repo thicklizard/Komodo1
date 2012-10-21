@@ -478,9 +478,7 @@ struct ddl_client_context *ddl_get_current_ddl_client_for_command(
 
 u32 ddl_get_yuv_buf_size(u32 width, u32 height, u32 format)
 {
-	/* HTC_START (klockwork issue)*/
-	u32 mem_size, width_round_up, height_round_up, align = 0;
-	/* HTC_END */
+	u32 mem_size, width_round_up, height_round_up, align;
 
 	width_round_up  = width;
 	height_round_up = height;
@@ -744,7 +742,7 @@ u32 ddl_allocate_dec_hw_buffers(struct ddl_client_context *ddl)
 		else {
 			if (!res_trk_check_for_sec_session()) {
 				memset(dec_bufs->desc.align_virtual_addr,
-					0, buf_size.sz_desc);
+					   0, buf_size.sz_desc);
 				msm_ion_do_cache_op(
 					ddl_context->video_ion_client,
 					dec_bufs->desc.alloc_handle,
@@ -1013,8 +1011,7 @@ u32 ddl_check_reconfig(struct ddl_client_context *ddl)
 			(decoder->frame_size.scan_lines ==
 			decoder->client_frame_size.scan_lines) &&
 			(decoder->frame_size.stride ==
-			decoder->client_frame_size.stride) &&
-			decoder->progressive_only)
+			decoder->client_frame_size.stride))
 				need_reconfig = false;
 	}
 	return need_reconfig;
@@ -1066,10 +1063,20 @@ void ddl_fill_dec_desc_buffer(struct ddl_client_context *ddl)
 
 void ddl_set_vidc_timeout(struct ddl_client_context *ddl)
 {
+	unsigned long core_clk_rate;
 	u32 vidc_time_out = 0;
-	if (ddl->codec_data.decoder.idr_only_decoding)
+	if (ddl->codec_data.decoder.idr_only_decoding) {
 		vidc_time_out = 2 * DDL_VIDC_1080P_200MHZ_TIMEOUT_VALUE;
-	DDL_MSG_HIGH("%s Video core time out value = 0x%x",
+	} else {
+		res_trk_get_clk_rate(&core_clk_rate);
+		if (core_clk_rate == DDL_VIDC_1080P_48MHZ)
+			vidc_time_out = DDL_VIDC_1080P_48MHZ_TIMEOUT_VALUE;
+		else if (core_clk_rate == DDL_VIDC_1080P_133MHZ)
+			vidc_time_out = DDL_VIDC_1080P_133MHZ_TIMEOUT_VALUE;
+		else
+			vidc_time_out = DDL_VIDC_1080P_200MHZ_TIMEOUT_VALUE;
+	}
+	DDL_MSG_HIGH("%s Video core time out value = 0x%x"
 		 __func__, vidc_time_out);
 	vidc_sm_set_video_core_timeout_value(
 		&ddl->shared_mem[ddl->command_channel], vidc_time_out);
